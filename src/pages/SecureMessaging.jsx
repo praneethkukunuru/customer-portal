@@ -1,4 +1,3 @@
-// src/SecureMessaging.jsx
 import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 
@@ -14,81 +13,25 @@ function truncateText(text, maxLength = 80) {
   return singleLine.substring(0, maxLength) + "...";
 }
 
-const STORAGE_KEY = "secure_messaging_chats";
-
-// Sample data
-const sampleChats = [
-  {
-    id: 1,
-    title: "Syngenta Yield Trailing Data Analytics Internship",
-    time: "2025-02-24 00:20",
-    messages: [
-      {
-        sender: "You",
-        text: "Hey Andrew!\nThank you for considering my application for the Yield Trailing Data Analytics Internship...",
-        time: "2025-02-24 00:20",
-      },
-      {
-        sender: "UNFCU Agent",
-        text: "Hi Praneeth,\nThanks for the follow-up. Let me check with the team about scheduling availability...",
-        time: "2025-02-24 00:30",
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: "Account Security Alert",
-    time: "2025-02-24 08:55",
-    messages: [
-      {
-        sender: "UNFCU Agent",
-        text: "We noticed unusual activity on your account. Please verify your login.",
-        time: "2025-02-24 08:55",
-      },
-      {
-        sender: "You",
-        text: "Is everything okay now? I changed my password.",
-        time: "2025-02-24 09:10",
-      },
-    ],
-  },
-];
+const SERVER_URL = "http://localhost:5000";
 
 const SecureMessaging = () => {
-  useEffect(() => {
-    document.title = "Secure Messaging";
-  }, []);
-  const [chats, setChats] = useState(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (err) {
-        console.error("Error parsing stored chats:", err);
-        return [];
-      }
-    } else {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sampleChats));
-      return sampleChats;
-    }
-  });
-
+  // Remove localStorage-based initial state; start with an empty array
+  const [chats, setChats] = useState([]);
   const [user, setUser] = useState(null);
-  const [selectedChat, setSelectedChat] = useState(chats.length > 0 ? chats[0] : null);
+  const [selectedChat, setSelectedChat] = useState(null);
 
-  // Compose mode
+  // Compose mode & new message fields
   const [composeMode, setComposeMode] = useState(false);
   const [newChatSubject, setNewChatSubject] = useState("");
   const [newChatMessage, setNewChatMessage] = useState("");
 
-  // Inline reply
+  // Inline reply fields
   const [newMessage, setNewMessage] = useState("");
   const [showReplyBox, setShowReplyBox] = useState(false);
 
-  // Profile menu toggle
+  // Profile menu toggle and expanded messages state
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-
-  // Expanded states for older messages
   const [expandedMessages, setExpandedMessages] = useState({});
 
   // Search states
@@ -97,27 +40,64 @@ const SecureMessaging = () => {
   const [showDropdown, setShowDropdown] = useState(false);
 
   const messagesContainerRef = useRef(null);
-
   const [unreadThreads, setUnreadThreads] = useState([]);
-  const SERVER_URL = "https://jdbeue.pythonanywhere.com";
-
 
   // ------------------ Effects ------------------
 
-  // Authentication check
+  // Set the document title
+  useEffect(() => {
+    document.title = "Secure Messaging";
+  }, []);
+
+  // Authentication check remains the same
   useEffect(() => {
     if (localStorage.getItem("authenticated") !== "true") {
       window.location.href = "/";
     }
   }, []);
 
-  // Fetch user info
+  // Fetch user info from the server
   useEffect(() => {
     axios
-      // .get("http://localhost:5000/user", { withCredentials: true })
       .get(`${SERVER_URL}/user`, { withCredentials: true })
       .then((res) => setUser(res.data))
-      // .catch(() => (window.location.href = "/"));
+      .catch(() => {
+        // Optionally handle error (e.g., redirect)
+      });
+  }, []);
+
+  // New: Fetch chats from the secure messaging server on mount
+  useEffect(() => {
+    axios
+      .get(`${SERVER_URL}/secure_inbox`, { withCredentials: true })
+      .then((res) => {
+        const messages = res.data.messages || [];
+        // Group messages by thread_id to form chat threads
+        const groupedChats = messages.reduce((acc, msg) => {
+          const id = msg.thread_id;
+          if (!acc[id]) {
+            acc[id] = {
+              id: id,
+              title: msg.topic || `Chat ${id}`,
+              time: msg.time,
+              messages: [msg],
+            };
+          } else {
+            acc[id].messages.push(msg);
+            // Update chat time if this message is later
+            if (msg.time > acc[id].time) {
+              acc[id].time = msg.time;
+            }
+          }
+          return acc;
+        }, {});
+        const chatsArray = Object.values(groupedChats).sort((a, b) => a.id - b.id);
+        setChats(chatsArray);
+        if (chatsArray.length > 0 && !selectedChat) {
+          setSelectedChat(chatsArray[0]);
+        }
+      })
+      .catch((err) => console.error("Error fetching chats from server:", err));
   }, []);
 
   // Auto-scroll conversation area
@@ -128,67 +108,50 @@ const SecureMessaging = () => {
     }
   }, [selectedChat?.messages, composeMode]);
 
-  // Save chats to localStorage
-  useEffect(() => {
-    if (chats.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
-    }
-  }, [chats]);
-
-  // Poll for agent replies
+  // Constant polling for secure replies (including agent replies forwarded by the server)
   useEffect(() => {
     const intervalId = setInterval(() => {
       axios
-        // .get("http://localhost:5000/agent_replies", { withCredentials: true })
-        .get(`${SERVER_URL}/agent_replies`, { withCredentials: true })
+        .get(`${SERVER_URL}/secure_replies`, { withCredentials: true })
         .then((res) => {
           const replies = res.data.replies;
           if (replies && replies.length > 0) {
+            // Merge new replies into the existing chats
             setChats((prevChats) =>
               prevChats.map((chat) => {
                 const newReplies = replies.filter((r) => r.thread_id === chat.id);
                 if (newReplies.length > 0) {
-                  // If this chat is not currently selected, mark it as unread
-                  if (!selectedChat || selectedChat.id !== chat.id) {
-                    setUnreadThreads((prevUnread) => {
-                      const newSet = new Set(prevUnread);
-                      newReplies.forEach(() => newSet.add(chat.id));
-                      return Array.from(newSet);
-                    });
-                  }
                   return { ...chat, messages: [...chat.messages, ...newReplies] };
                 }
                 return chat;
               })
             );
-            // Optionally update the selected chat from local store if needed:
-            if (selectedChat) {
-              const updatedSelected = chats.find((c) => c.id === selectedChat.id);
-              if (updatedSelected) setSelectedChat(updatedSelected);
-            }
+            // Update unread threads if needed
+            setUnreadThreads((prevUnread) => {
+              const newSet = new Set(prevUnread);
+              replies.forEach((r) => newSet.add(r.thread_id));
+              return Array.from(newSet);
+            });
           }
         })
-        .catch((err) => console.error("Error fetching agent replies:", err));
+        .catch((err) => console.error("Error fetching secure replies:", err));
     }, 5000);
     return () => clearInterval(intervalId);
-  }, [selectedChat, chats]);
+  }, []); // Run only on mount for constant polling
 
-  // If chats array changes, update selectedChat if needed
+  // Ensure selectedChat is updated when chats change
   useEffect(() => {
     if (chats.length > 0) {
       if (!selectedChat) {
         setSelectedChat(chats[0]);
       } else {
         const updated = chats.find((t) => t.id === selectedChat.id);
-        if (
-          updated &&
-          updated.messages.length !== selectedChat.messages.length
-        ) {
+        if (updated && updated.messages.length !== selectedChat.messages.length) {
           setSelectedChat(updated);
         }
       }
     }
-  }, [chats]);
+  }, [chats, selectedChat]);
 
   // Search logic
   useEffect(() => {
@@ -199,9 +162,7 @@ const SecureMessaging = () => {
     }
     const term = searchTerm.toLowerCase();
     const results = chats.filter((chat) => {
-      // Check chat title
       if (chat.title.toLowerCase().includes(term)) return true;
-      // Check messages
       for (let msg of chat.messages) {
         if (msg.text.toLowerCase().includes(term)) {
           return true;
@@ -214,6 +175,7 @@ const SecureMessaging = () => {
   }, [searchTerm, chats]);
 
   // ------------------ Handlers ------------------
+
   const handleSelectThread = (thread) => {
     setSelectedChat(thread);
     setComposeMode(false);
@@ -223,22 +185,17 @@ const SecureMessaging = () => {
 
   const handleLogout = () => {
     axios
-      // .get("http://localhost:5000/logout", { withCredentials: true })
       .get(`${SERVER_URL}/logout`, { withCredentials: true })
       .then(() => {
         localStorage.removeItem("authenticated");
-        // sessionStorage.setItem("loggedOut", "true"); 
-        // localStorage.setItem("logoutEvent", "true");
-        if (window.opener && typeof window.opener.handleSecureMessagingLogout === "function") {
+        if (
+          window.opener &&
+          typeof window.opener.handleSecureMessagingLogout === "function"
+        ) {
           window.opener.handleSecureMessagingLogout();
         } else {
-          // Fallback: signal via localStorage.
           localStorage.setItem("logoutEvent", "true");
         }
-        // Delay closing to ensure the login page processes the logout.
-        // setTimeout(() => window.close(), 100);
-        // window.location.href = "/";
-        // window.close();
         setTimeout(() => window.close(), 100);
       })
       .catch((err) => console.error("Logout failed:", err));
@@ -252,6 +209,7 @@ const SecureMessaging = () => {
       sender: "You",
       time: formatDate(new Date()),
     };
+    // Optimistically update the UI
     const updatedChat = { ...selectedChat, messages: [...selectedChat.messages, newMsg] };
     const updatedChats = chats.map((chat) =>
       chat.id === updatedChat.id ? updatedChat : chat
@@ -261,13 +219,13 @@ const SecureMessaging = () => {
     setNewMessage("");
 
     axios
-      // .post("http://localhost:5000/send_to_agent", {
-      .post(`${SERVER_URL}/send_to_agent`, {
-        thread_id: selectedChat.id,
-        message: newMsg.text,
-      }, { withCredentials: true })
-      .then((res) => console.log("Message forwarded to agent:", res.data))
-      .catch((err) => console.error("Error sending message to agent:", err));
+      .post(
+        `${SERVER_URL}/send_to_secure`,
+        { thread_id: selectedChat.id, message: newMsg.text },
+        { withCredentials: true }
+      )
+      .then((res) => console.log("Message forwarded to secure messaging agent:", res.data))
+      .catch((err) => console.error("Error sending message to secure messaging agent:", err));
 
     setShowReplyBox(false);
   };
@@ -277,8 +235,8 @@ const SecureMessaging = () => {
       alert("Please fill in all fields.");
       return;
     }
-    const newId =
-      chats.length > 0 ? Math.max(...chats.map((chat) => chat.id)) + 1 : 1;
+    // Create a new chat object locally
+    const newId = chats.length > 0 ? Math.max(...chats.map((chat) => chat.id)) + 1 : 1;
     const currentTime = formatDate(new Date());
     const newChat = {
       id: newId,
@@ -292,20 +250,18 @@ const SecureMessaging = () => {
         },
       ],
     };
-    // console.log(newChatSubject, newChatMessage);  // Debugging
     const updatedChats = [newChat, ...chats];
     setChats(updatedChats);
     setSelectedChat(newChat);
 
     axios
-      // .post("http://localhost:5000/send_to_agent", {
-      .post(`${SERVER_URL}/send_to_agent`, {
-        thread_id: newChat.id,
-        message: newChatMessage,
-        topic: newChatSubject,
-      }, { withCredentials: true })
-      .then((res) => console.log("New chat forwarded to agent:", res.data))
-      .catch((err) => console.error("Error forwarding new chat message to agent:", err));
+      .post(
+        `${SERVER_URL}/send_to_secure`,
+        { thread_id: newChat.id, message: newChatMessage, topic: newChatSubject },
+        { withCredentials: true }
+      )
+      .then((res) => console.log("New chat forwarded to secure messaging agent:", res.data))
+      .catch((err) => console.error("Error forwarding new chat message to secure messaging agent:", err));
 
     setNewChatSubject("");
     setNewChatMessage("");
@@ -336,7 +292,6 @@ const SecureMessaging = () => {
   };
 
   const getAvatar = (sender) => {
-    console.log(user.picture);
     const defaultPic = "/avatar.png";
     if (sender === "You") {
       return user?.picture || defaultPic;
@@ -353,8 +308,15 @@ const SecureMessaging = () => {
   };
 
   return user ? (
-    <div style={{ display: "flex", width: "100vw", height: "100vh", backgroundColor: "#f9f9f9" }}>
-      {/* Left Panel: 25% width, bank logo centered */}
+    <div
+      style={{
+        display: "flex",
+        width: "100vw",
+        height: "100vh",
+        backgroundColor: "#f9f9f9",
+      }}
+    >
+      {/* Left Panel */}
       <aside
         style={{
           width: "25%",
@@ -367,7 +329,6 @@ const SecureMessaging = () => {
           fontSize: "0.9rem",
         }}
       >
-        {/* Bank logo centered with extra space below */}
         <div style={{ margin: "0 auto", marginBottom: "32px" }}>
           <img
             src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSfgnRAYqlZ9QkeI3zoIhQ3c-JKNLZoGPUzdQ&s"
@@ -376,7 +337,6 @@ const SecureMessaging = () => {
           />
         </div>
 
-        {/* New Message button (bluish-gray) */}
         <button
           style={{
             width: "100%",
@@ -397,7 +357,6 @@ const SecureMessaging = () => {
           New Message
         </button>
 
-        {/* Chat list */}
         <ul style={{ listStyle: "none", paddingLeft: 0, width: "100%" }}>
           {chats.length === 0 ? (
             <p style={{ color: "#666" }}>No conversations yet.</p>
@@ -412,7 +371,8 @@ const SecureMessaging = () => {
                   borderBottom: "1px solid #e2e8f0",
                   marginBottom: "8px",
                   cursor: "pointer",
-                  backgroundColor: selectedChat?.id === chat.id ? "#edf2f7" : "#fff",
+                  backgroundColor:
+                    selectedChat?.id === chat.id ? "#edf2f7" : "#fff",
                 }}
               >
                 <p style={{ fontWeight: "bold", margin: 0 }}>{chat.title}</p>
@@ -438,7 +398,7 @@ const SecureMessaging = () => {
         </ul>
       </aside>
 
-      {/* Right Panel: 75% width, top search bar + user pic, white conversation card */}
+      {/* Right Panel */}
       <div
         style={{
           width: "75%",
@@ -448,7 +408,7 @@ const SecureMessaging = () => {
           boxSizing: "border-box",
         }}
       >
-        {/* Top bar with search + user profile */}
+        {/* Top Bar */}
         <div
           style={{
             display: "flex",
@@ -459,7 +419,6 @@ const SecureMessaging = () => {
             position: "relative",
           }}
         >
-          {/* Search input (rounded) */}
           <div style={{ flex: 1, position: "relative", marginRight: "16px" }}>
             <input
               type="text"
@@ -477,11 +436,9 @@ const SecureMessaging = () => {
                 if (searchResults.length > 0) setShowDropdown(true);
               }}
               onBlur={() => {
-                // Delay to allow click
                 setTimeout(() => setShowDropdown(false), 150);
               }}
             />
-            {/* Dropdown of search results */}
             {showDropdown && searchResults.length > 0 && (
               <div
                 style={{
@@ -515,7 +472,6 @@ const SecureMessaging = () => {
             )}
           </div>
 
-          {/* User profile picture on the right side */}
           <div style={{ position: "relative" }}>
             {user && (
               <img
@@ -578,7 +534,6 @@ const SecureMessaging = () => {
             margin: "0 16px 16px",
           }}
         >
-          {/* Header (only if not in compose mode) */}
           {!composeMode && (
             <header
               style={{
@@ -589,7 +544,13 @@ const SecureMessaging = () => {
             >
               <div>
                 {selectedChat ? (
-                  <h2 style={{ fontSize: "1.5rem", fontWeight: "bold", margin: 0 }}>
+                  <h2
+                    style={{
+                      fontSize: "1.5rem",
+                      fontWeight: "bold",
+                      margin: 0,
+                    }}
+                  >
                     {selectedChat.title}
                   </h2>
                 ) : (
@@ -602,7 +563,6 @@ const SecureMessaging = () => {
           )}
 
           {composeMode ? (
-            // Compose Mode
             <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
               <div
                 style={{
@@ -614,11 +574,23 @@ const SecureMessaging = () => {
                   flex: 1,
                 }}
               >
-                <h2 style={{ fontSize: "1.3rem", fontWeight: "bold", marginBottom: "16px" }}>
+                <h2
+                  style={{
+                    fontSize: "1.3rem",
+                    fontWeight: "bold",
+                    marginBottom: "16px",
+                  }}
+                >
                   Compose New Message
                 </h2>
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontSize: "0.85rem" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "4px",
+                      fontSize: "0.85rem",
+                    }}
+                  >
                     Subject
                   </label>
                   <input
@@ -642,7 +614,9 @@ const SecureMessaging = () => {
                     flexDirection: "column",
                   }}
                 >
-                  <label style={{ marginBottom: "4px", fontSize: "0.85rem" }}>
+                  <label
+                    style={{ marginBottom: "4px", fontSize: "0.85rem" }}
+                  >
                     Message
                   </label>
                   <textarea
@@ -659,7 +633,13 @@ const SecureMessaging = () => {
                     placeholder="Type your message..."
                   ></textarea>
                 </div>
-                <div style={{ display: "flex", gap: "8px", marginTop: "auto" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    marginTop: "auto",
+                  }}
+                >
                   <button
                     onClick={sendNewChat}
                     style={{
@@ -693,7 +673,6 @@ const SecureMessaging = () => {
             </div>
           ) : (
             <>
-              {/* Conversation area now includes messages and the reply/delete or reply box */}
               <div
                 style={{
                   flex: 1,
@@ -707,7 +686,8 @@ const SecureMessaging = () => {
                 {selectedChat ? (
                   <>
                     {selectedChat.messages.map((msg, index) => {
-                      const isLastMessage = index === selectedChat.messages.length - 1;
+                      const isLastMessage =
+                        index === selectedChat.messages.length - 1;
                       const key = `${selectedChat.id}-${index}`;
                       const expanded = expandedMessages[key] || false;
                       const truncated = !isLastMessage && !expanded;
@@ -720,10 +700,7 @@ const SecureMessaging = () => {
                           key={key}
                           onClick={() => {
                             if (!isLastMessage) {
-                              setExpandedMessages((prev) => ({
-                                ...prev,
-                                [key]: !prev[key],
-                              }));
+                              toggleExpand(selectedChat.id, index);
                             }
                           }}
                           style={{
@@ -739,12 +716,10 @@ const SecureMessaging = () => {
                             fontSize: "0.85rem",
                           }}
                         >
-                          {/* Profile pic (32px) */}
                           <img
                             src={
                               msg.sender === "You"
-                                ? "/avatar.png" ||
-                                  "https://media.istockphoto.com/id/1223671392/vector/default-profile-picture-avatar-photo-placeholder-vector-illustration.jpg?s=612x612&w=0&k=20&c=s0aTdmT5aU6b8ot7VKm11DeID6NctRCpB755rA1BIP0="
+                                ? "/avatar.png"
                                 : "/agent.png"
                             }
                             alt="Avatar"
@@ -755,7 +730,6 @@ const SecureMessaging = () => {
                               flexShrink: 0,
                             }}
                           />
-                          {/* Message content */}
                           <div style={{ flex: 1 }}>
                             <div
                               style={{
@@ -766,7 +740,9 @@ const SecureMessaging = () => {
                                 color: "#555",
                               }}
                             >
-                              <span style={{ fontWeight: "bold" }}>{msg.sender}</span>
+                              <span style={{ fontWeight: "bold" }}>
+                                {msg.sender}
+                              </span>
                               <span>{msg.time}</span>
                             </div>
                             <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>
@@ -776,7 +752,6 @@ const SecureMessaging = () => {
                         </div>
                       );
                     })}
-                    {/* Reply/Delete buttons or inline reply box appear right after the latest message */}
                     {!showReplyBox ? (
                       <div
                         style={{
@@ -839,7 +814,13 @@ const SecureMessaging = () => {
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
                         ></textarea>
-                        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            marginTop: "8px",
+                          }}
+                        >
                           <button
                             onClick={sendMessage}
                             style={{
