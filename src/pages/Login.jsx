@@ -10,6 +10,8 @@ const Login = () => {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [securePortalWindow, setSecurePortalWindow] = useState(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const SERVER_URL = "https://jdbeue.pythonanywhere.com";
+
 
   useEffect(() => {
     document.title = "UNFCU";
@@ -45,7 +47,7 @@ const Login = () => {
     if (localStorage.getItem("authenticated") === "true") {
       setIsLoggedIn(true);
       axios
-        .get("https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/user", { withCredentials: true })
+        .get(`${SERVER_URL}/user`, { withCredentials: true })
         // .get("http://localhost:5000/user", { withCredentials: true })
         .then((res) => {
           if (res.data && res.data.picture) {
@@ -65,7 +67,7 @@ const Login = () => {
     }
     axios
       .post(
-        "https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/callback",
+        `${SERVER_URL}/callback`,
         // "http://localhost:5000/callback",
         { token: credentialResponse.credential },
         { withCredentials: true }
@@ -76,7 +78,7 @@ const Login = () => {
           setIsLoggedIn(true);
           // Fetch user info.
           axios
-            .get("https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/user", { withCredentials: true })
+            .get(`${SERVER_URL}/user`, { withCredentials: true })
             // .get("http://localhost:5000/user", { withCredentials: true })
             .then((res) => {
               if (res.data && res.data.picture) {
