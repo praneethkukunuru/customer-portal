@@ -14,35 +14,9 @@ function truncateText(text, maxLength = 80) {
   return singleLine.substring(0, maxLength) + "...";
 }
 
-/** 
- * We'll now store all users' chats in a single localStorage key:
- */
-const ALL_CHATS_STORAGE_KEY = "ALL_SECURE_MESSAGING_CHATS";
+const STORAGE_KEY = "secure_messaging_chats";
 
-/** 
- * Utility: Load all chats (for all users) from localStorage.
- */
-function loadAllChats() {
-  const stored = localStorage.getItem(ALL_CHATS_STORAGE_KEY);
-  if (!stored) return [];
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return [];
-  }
-}
-
-/** 
- * Utility: Save all chats (for all users) to localStorage.
- */
-function saveAllChats(allChats) {
-  localStorage.setItem(ALL_CHATS_STORAGE_KEY, JSON.stringify(allChats));
-}
-
-/**
- * Sample data for demonstration; if you want to provide default chats 
- * for a newly registered user, you can incorporate them once user is known.
- */
+// Sample data
 const sampleChats = [
   {
     id: 1,
@@ -84,11 +58,23 @@ const SecureMessaging = () => {
   useEffect(() => {
     document.title = "Secure Messaging";
   }, []);
+  const [chats, setChats] = useState(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (err) {
+        console.error("Error parsing stored chats:", err);
+        return [];
+      }
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sampleChats));
+      return sampleChats;
+    }
+  });
 
-  // This is the user-specific list of chats we display in the UI.
-  const [chats, setChats] = useState([]);
   const [user, setUser] = useState(null);
-  const [selectedChat, setSelectedChat] = useState(null);
+  const [selectedChat, setSelectedChat] = useState(chats.length > 0 ? chats[0] : null);
 
   // Compose mode
   const [composeMode, setComposeMode] = useState(false);
@@ -110,12 +96,11 @@ const SecureMessaging = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // For unread
+  const messagesContainerRef = useRef(null);
+
   const [unreadThreads, setUnreadThreads] = useState([]);
-  // Server URL
   const SERVER_URL = "https://jdbeue.pythonanywhere.com";
 
-  const messagesContainerRef = useRef(null);
 
   // ------------------ Effects ------------------
 
@@ -129,43 +114,11 @@ const SecureMessaging = () => {
   // Fetch user info
   useEffect(() => {
     axios
+      // .get("http://localhost:5000/user", { withCredentials: true })
       .get(`${SERVER_URL}/user`, { withCredentials: true })
-      .then((res) => {
-        // Once we know who the user is, we can load their chats from localStorage
-        setUser(res.data);
-      })
-      .catch((err) => console.log("User fetch error:", err));
+      .then((res) => setUser(res.data))
+      // .catch(() => (window.location.href = "/"));
   }, []);
-
-  /**
-   * Once we have a user, load all chats from localStorage, filter to only this user's chats.
-   * If no chats for them, you can optionally provide default (e.g. sample) data.
-   */
-  useEffect(() => {
-    if (!user || !user.email) return; // wait until user is known
-
-    const allChats = loadAllChats();
-    // Filter for this user's chats only
-    const userChats = allChats.filter((chat) => chat.ownerEmail === user.email);
-    if (userChats.length === 0) {
-      // OPTIONAL: If you want to give them sample data the first time, do so here:
-      // e.g. copy sampleChats, set ownerEmail, and save.
-      /*
-      const sampleWithOwner = sampleChats.map((ch) => ({
-        ...ch,
-        ownerEmail: user.email,
-      }));
-      allChats.push(...sampleWithOwner);
-      saveAllChats(allChats);
-      setChats(sampleWithOwner);
-      setSelectedChat(sampleWithOwner[0]);
-      */
-      setChats([]); // or set to empty
-    } else {
-      setChats(userChats);
-      setSelectedChat(userChats[0] || null);
-    }
-  }, [user]);
 
   // Auto-scroll conversation area
   useEffect(() => {
@@ -175,77 +128,67 @@ const SecureMessaging = () => {
     }
   }, [selectedChat?.messages, composeMode]);
 
+  // Save chats to localStorage
+  useEffect(() => {
+    if (chats.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+    }
+  }, [chats]);
+
   // Poll for agent replies
   useEffect(() => {
     const intervalId = setInterval(() => {
       axios
+        // .get("http://localhost:5000/agent_replies", { withCredentials: true })
         .get(`${SERVER_URL}/agent_replies`, { withCredentials: true })
         .then((res) => {
           const replies = res.data.replies;
-          if (replies && replies.length > 0 && user?.email) {
-            // We need to incorporate these replies into localStorage
-            const allChats = loadAllChats();
-            let changed = false;
-
-            // For each reply, find the chat with same thread_id & ownerEmail == user.email
-            replies.forEach((r) => {
-              const idx = allChats.findIndex(
-                (c) => c.id === r.thread_id && c.ownerEmail === user.email
-              );
-              if (idx >= 0) {
-                // Insert the new message
-                allChats[idx] = {
-                  ...allChats[idx],
-                  messages: [...allChats[idx].messages, r],
-                };
-                changed = true;
-
-                // If not selected, mark unread
-                if (!selectedChat || selectedChat.id !== r.thread_id) {
-                  setUnreadThreads((prevUnread) => {
-                    const newSet = new Set(prevUnread);
-                    newSet.add(r.thread_id);
-                    return Array.from(newSet);
-                  });
+          if (replies && replies.length > 0) {
+            setChats((prevChats) =>
+              prevChats.map((chat) => {
+                const newReplies = replies.filter((r) => r.thread_id === chat.id);
+                if (newReplies.length > 0) {
+                  // If this chat is not currently selected, mark it as unread
+                  if (!selectedChat || selectedChat.id !== chat.id) {
+                    setUnreadThreads((prevUnread) => {
+                      const newSet = new Set(prevUnread);
+                      newReplies.forEach(() => newSet.add(chat.id));
+                      return Array.from(newSet);
+                    });
+                  }
+                  return { ...chat, messages: [...chat.messages, ...newReplies] };
                 }
-              }
-            });
-
-            if (changed) {
-              // Save back to localStorage
-              saveAllChats(allChats);
-              // Filter to user
-              const userChats = allChats.filter(
-                (chat) => chat.ownerEmail === user.email
-              );
-              setChats(userChats);
-              // If selectedThread changed
-              if (selectedChat) {
-                const updatedSelected = userChats.find(
-                  (c) => c.id === selectedChat.id
-                );
-                if (updatedSelected) setSelectedChat(updatedSelected);
-              }
+                return chat;
+              })
+            );
+            // Optionally update the selected chat from local store if needed:
+            if (selectedChat) {
+              const updatedSelected = chats.find((c) => c.id === selectedChat.id);
+              if (updatedSelected) setSelectedChat(updatedSelected);
             }
           }
         })
         .catch((err) => console.error("Error fetching agent replies:", err));
     }, 5000);
     return () => clearInterval(intervalId);
-  }, [selectedChat, chats, user]);
+  }, [selectedChat, chats]);
 
   // If chats array changes, update selectedChat if needed
   useEffect(() => {
-    if (chats.length > 0 && selectedChat) {
-      const updated = chats.find((t) => t.id === selectedChat.id);
-      if (
-        updated &&
-        updated.messages.length !== selectedChat.messages.length
-      ) {
-        setSelectedChat(updated);
+    if (chats.length > 0) {
+      if (!selectedChat) {
+        setSelectedChat(chats[0]);
+      } else {
+        const updated = chats.find((t) => t.id === selectedChat.id);
+        if (
+          updated &&
+          updated.messages.length !== selectedChat.messages.length
+        ) {
+          setSelectedChat(updated);
+        }
       }
     }
-  }, [chats, selectedChat]);
+  }, [chats]);
 
   // Search logic
   useEffect(() => {
@@ -271,107 +214,74 @@ const SecureMessaging = () => {
   }, [searchTerm, chats]);
 
   // ------------------ Handlers ------------------
-
-  function handleSelectThread(thread) {
+  const handleSelectThread = (thread) => {
     setSelectedChat(thread);
     setComposeMode(false);
     setShowReplyBox(false);
-    // Mark as read
     setUnreadThreads((prev) => prev.filter((id) => id !== thread.id));
-  }
+  };
 
-  function handleLogout() {
+  const handleLogout = () => {
     axios
+      // .get("http://localhost:5000/logout", { withCredentials: true })
       .get(`${SERVER_URL}/logout`, { withCredentials: true })
       .then(() => {
         localStorage.removeItem("authenticated");
+        // sessionStorage.setItem("loggedOut", "true"); 
+        // localStorage.setItem("logoutEvent", "true");
         if (window.opener && typeof window.opener.handleSecureMessagingLogout === "function") {
           window.opener.handleSecureMessagingLogout();
         } else {
+          // Fallback: signal via localStorage.
           localStorage.setItem("logoutEvent", "true");
         }
+        // Delay closing to ensure the login page processes the logout.
+        // setTimeout(() => window.close(), 100);
+        // window.location.href = "/";
+        // window.close();
         setTimeout(() => window.close(), 100);
       })
       .catch((err) => console.error("Logout failed:", err));
-  }
+  };
 
-  /**
-   * Send a message in the selected chat.
-   */
-  function sendMessage() {
-    if (!newMessage.trim() || !selectedChat || !user?.email) return;
-
-    // 1. Load all
-    const allChats = loadAllChats();
-    // 2. Find the chat in allChats
-    const idx = allChats.findIndex(
-      (c) => c.id === selectedChat.id && c.ownerEmail === user.email
-    );
-    if (idx < 0) {
-      console.error("Chat not found in localStorage for this user. Cannot send message.");
-      return;
-    }
-
-    // 3. Build new message
+  const sendMessage = () => {
+    if (!newMessage.trim() || !selectedChat) return;
     const newMsg = {
-      id: allChats[idx].messages.length + 1,
+      id: selectedChat.messages.length + 1,
       text: newMessage,
       sender: "You",
       time: formatDate(new Date()),
     };
-
-    // 4. Update that chat
-    allChats[idx] = {
-      ...allChats[idx],
-      messages: [...allChats[idx].messages, newMsg],
-    };
-
-    // 5. Save all
-    saveAllChats(allChats);
-
-    // 6. Filter to user
-    const userChats = allChats.filter((c) => c.ownerEmail === user.email);
-    setChats(userChats);
-
-    // 7. Update selectedChat
-    const updatedChat = allChats[idx];
+    const updatedChat = { ...selectedChat, messages: [...selectedChat.messages, newMsg] };
+    const updatedChats = chats.map((chat) =>
+      chat.id === updatedChat.id ? updatedChat : chat
+    );
     setSelectedChat(updatedChat);
+    setChats(updatedChats);
+    setNewMessage("");
 
-    // 8. Optionally forward to agent
     axios
+      // .post("http://localhost:5000/send_to_agent", {
       .post(`${SERVER_URL}/send_to_agent`, {
-        thread_id: updatedChat.id,
+        thread_id: selectedChat.id,
         message: newMsg.text,
       }, { withCredentials: true })
       .then((res) => console.log("Message forwarded to agent:", res.data))
       .catch((err) => console.error("Error sending message to agent:", err));
 
     setShowReplyBox(false);
-    setNewMessage("");
-  }
+  };
 
-  /**
-   * Create a new chat for this user.
-   */
-  function sendNewChat() {
+  const sendNewChat = () => {
     if (!newChatSubject.trim() || !newChatMessage.trim()) {
       alert("Please fill in all fields.");
       return;
     }
-    if (!user?.email) return;
-
-    // 1. Load all
-    const allChats = loadAllChats();
-
-    // 2. Determine new ID
     const newId =
-      allChats.length > 0 ? Math.max(...allChats.map((c) => c.id)) + 1 : 1;
-
-    // 3. Build new chat with ownerEmail
+      chats.length > 0 ? Math.max(...chats.map((chat) => chat.id)) + 1 : 1;
     const currentTime = formatDate(new Date());
     const newChat = {
       id: newId,
-      ownerEmail: user.email, // <--- key
       title: newChatSubject,
       time: currentTime,
       messages: [
@@ -382,82 +292,67 @@ const SecureMessaging = () => {
         },
       ],
     };
-
-    // 4. Insert into all
-    allChats.push(newChat);
-
-    // 5. Save
-    saveAllChats(allChats);
-
-    // 6. Filter to user
-    const userChats = allChats.filter((c) => c.ownerEmail === user.email);
-    setChats(userChats);
+    // console.log(newChatSubject, newChatMessage);  // Debugging
+    const updatedChats = [newChat, ...chats];
+    setChats(updatedChats);
     setSelectedChat(newChat);
 
-    // 7. Forward to agent
     axios
+      // .post("http://localhost:5000/send_to_agent", {
       .post(`${SERVER_URL}/send_to_agent`, {
-        thread_id: newId,
+        thread_id: newChat.id,
         message: newChatMessage,
         topic: newChatSubject,
       }, { withCredentials: true })
       .then((res) => console.log("New chat forwarded to agent:", res.data))
-      .catch((err) => console.error("Error forwarding new chat:", err));
+      .catch((err) => console.error("Error forwarding new chat message to agent:", err));
 
     setNewChatSubject("");
     setNewChatMessage("");
     setComposeMode(false);
-  }
+  };
 
-  function cancelCompose() {
+  const cancelCompose = () => {
     setNewChatSubject("");
     setNewChatMessage("");
     setComposeMode(false);
-  }
+  };
 
-  /**
-   * Delete the selected thread from localStorage as well.
-   */
-  function deleteThread() {
-    if (!selectedChat || !user?.email) return;
+  const deleteThread = () => {
+    if (!selectedChat) return;
     if (window.confirm("Are you sure you want to delete this thread?")) {
-      const allChats = loadAllChats();
-      const filtered = allChats.filter(
-        (c) => !(c.id === selectedChat.id && c.ownerEmail === user.email)
-      );
-      saveAllChats(filtered);
-      const userChats = filtered.filter((c) => c.ownerEmail === user.email);
-      setChats(userChats);
-      setSelectedChat(userChats.length > 0 ? userChats[0] : null);
+      const updatedChats = chats.filter((chat) => chat.id !== selectedChat.id);
+      setChats(updatedChats);
+      setSelectedChat(updatedChats.length > 0 ? updatedChats[0] : null);
     }
-  }
+  };
 
-  function toggleExpand(chatId, msgIndex) {
+  const toggleExpand = (chatId, msgIndex) => {
     const key = `${chatId}-${msgIndex}`;
     setExpandedMessages((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
-  }
+  };
 
-  function getAvatar(sender) {
+  const getAvatar = (sender) => {
+    console.log(user.picture);
     const defaultPic = "/avatar.png";
     if (sender === "You") {
       return user?.picture || defaultPic;
     }
     return defaultPic;
-  }
+  };
 
-  function handleSelectSearchResult(chat) {
-    handleSelectThread(chat);
-    setSearchDropdown(false);
+  const handleSelectSearchResult = (chat) => {
+    setSelectedChat(chat);
+    setShowDropdown(false);
     setSearchTerm("");
-  }
+    setComposeMode(false);
+    setShowReplyBox(false);
+  };
 
-  // If there's no user or we haven't loaded them yet, just show nothing (or a spinner).
-  if (!user) return null;
-
-  return (
+  return user ? (
     <div style={{ display: "flex", width: "100vw", height: "100vh", backgroundColor: "#f9f9f9" }}>
       {/* Left Panel: 25% width, bank logo centered */}
       <aside
@@ -582,6 +477,7 @@ const SecureMessaging = () => {
                 if (searchResults.length > 0) setShowDropdown(true);
               }}
               onBlur={() => {
+                // Delay to allow click
                 setTimeout(() => setShowDropdown(false), 150);
               }}
             />
@@ -621,7 +517,7 @@ const SecureMessaging = () => {
 
           {/* User profile picture on the right side */}
           <div style={{ position: "relative" }}>
-            {user && user.picture && (
+            {user && (
               <img
                 src={user.picture}
                 alt="Profile"
@@ -847,7 +743,8 @@ const SecureMessaging = () => {
                           <img
                             src={
                               msg.sender === "You"
-                                ? "/avatar.png"
+                                ? "/avatar.png" ||
+                                  "https://media.istockphoto.com/id/1223671392/vector/default-profile-picture-avatar-photo-placeholder-vector-illustration.jpg?s=612x612&w=0&k=20&c=s0aTdmT5aU6b8ot7VKm11DeID6NctRCpB755rA1BIP0="
                                 : "/agent.png"
                             }
                             alt="Avatar"
@@ -1012,7 +909,7 @@ const SecureMessaging = () => {
         </div>
       </div>
     </div>
-  );
+  ) : null;
 };
 
 export default SecureMessaging;
