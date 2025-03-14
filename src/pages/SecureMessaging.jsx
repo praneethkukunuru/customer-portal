@@ -13,7 +13,7 @@ function truncateText(text, maxLength = 80) {
   return singleLine.substring(0, maxLength) + "...";
 }
 
-const SERVER_URL = "http://localhost:5000";
+const SERVER_URL = "https://jdbeue.pythonanywhere.com";
 
 const SecureMessaging = () => {
   // Remove localStorage-based initial state; start with an empty array
