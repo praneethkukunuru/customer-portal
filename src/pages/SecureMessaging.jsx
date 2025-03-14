@@ -99,6 +99,7 @@ const SecureMessaging = () => {
   const messagesContainerRef = useRef(null);
 
   const [unreadThreads, setUnreadThreads] = useState([]);
+  const SERVER_URL = "https://jdbeue.pythonanywhere.com";
 
 
   // ------------------ Effects ------------------
@@ -114,7 +115,7 @@ const SecureMessaging = () => {
   useEffect(() => {
     axios
       // .get("http://localhost:5000/user", { withCredentials: true })
-      .get("https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/user", { withCredentials: true })
+      .get(`${SERVER_URL}/user`, { withCredentials: true })
       .then((res) => setUser(res.data))
       // .catch(() => (window.location.href = "/"));
   }, []);
@@ -139,7 +140,7 @@ const SecureMessaging = () => {
     const intervalId = setInterval(() => {
       axios
         // .get("http://localhost:5000/agent_replies", { withCredentials: true })
-        .get("https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/agent_replies", { withCredentials: true })
+        .get(`${SERVER_URL}/agent_replies`, { withCredentials: true })
         .then((res) => {
           const replies = res.data.replies;
           if (replies && replies.length > 0) {
@@ -223,7 +224,7 @@ const SecureMessaging = () => {
   const handleLogout = () => {
     axios
       // .get("http://localhost:5000/logout", { withCredentials: true })
-      .get("https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/logout", { withCredentials: true })
+      .get(`${SERVER_URL}/logout`, { withCredentials: true })
       .then(() => {
         localStorage.removeItem("authenticated");
         // sessionStorage.setItem("loggedOut", "true"); 
@@ -261,7 +262,7 @@ const SecureMessaging = () => {
 
     axios
       // .post("http://localhost:5000/send_to_agent", {
-      .post("https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/send_to_agent", {
+      .post(`${SERVER_URL}/send_to_agent`, {
         thread_id: selectedChat.id,
         message: newMsg.text,
       }, { withCredentials: true })
@@ -298,7 +299,7 @@ const SecureMessaging = () => {
 
     axios
       // .post("http://localhost:5000/send_to_agent", {
-      .post("https://evening-wildwood-36637-fb73c2e3edbf.herokuapp.com/send_to_agent", {
+      .post(`${SERVER_URL}/send_to_agent`, {
         thread_id: newChat.id,
         message: newChatMessage,
         topic: newChatSubject,
