@@ -655,6 +655,19 @@ const SecureMessaging = () => {
                     Send Message
                   </button>
                   <button
+                    style={{
+                      backgroundColor: "#3182ce",
+                      color: "#fff",
+                      padding: "8px 16px",
+                      borderRadius: "4px",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    Attachment
+                  </button>
+                  <button
                     onClick={cancelCompose}
                     style={{
                       backgroundColor: "#718096",
