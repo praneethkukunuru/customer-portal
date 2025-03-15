@@ -16,7 +16,7 @@ function truncateText(text, maxLength = 80) {
 const SERVER_URL = "https://jdbeue.pythonanywhere.com";
 
 const SecureMessaging = () => {
-  // Remove localStorage-based initial state; start with an empty array
+  // State variables
   const [chats, setChats] = useState([]);
   const [user, setUser] = useState(null);
   const [selectedChat, setSelectedChat] = useState(null);
@@ -42,6 +42,9 @@ const SecureMessaging = () => {
   const messagesContainerRef = useRef(null);
   const [unreadThreads, setUnreadThreads] = useState([]);
 
+  // New state: track if a forced reload has occurred
+  const [hasForcedReload, setHasForcedReload] = useState(false);
+
   // ------------------ Effects ------------------
 
   // Set the document title
@@ -49,7 +52,7 @@ const SecureMessaging = () => {
     document.title = "Secure Messaging";
   }, []);
 
-  // Authentication check remains the same
+  // Authentication check
   useEffect(() => {
     if (localStorage.getItem("authenticated") !== "true") {
       window.location.href = "/";
@@ -66,7 +69,7 @@ const SecureMessaging = () => {
       });
   }, []);
 
-  // New: Fetch chats from the secure messaging server on mount
+  // Fetch chats from the secure messaging server on mount
   useEffect(() => {
     axios
       .get(`${SERVER_URL}/secure_inbox`, { withCredentials: true })
@@ -97,7 +100,9 @@ const SecureMessaging = () => {
           setSelectedChat(chatsArray[0]);
         }
       })
-      .catch((err) => console.error("Error fetching chats from server:", err));
+      .catch((err) =>
+        console.error("Error fetching chats from server:", err)
+      );
   }, []);
 
   // Auto-scroll conversation area
@@ -108,7 +113,7 @@ const SecureMessaging = () => {
     }
   }, [selectedChat?.messages, composeMode]);
 
-  // Constant polling for secure replies (including agent replies forwarded by the server)
+  // Constant polling for secure replies (agent replies forwarded by the server)
   useEffect(() => {
     const intervalId = setInterval(() => {
       axios
@@ -116,16 +121,29 @@ const SecureMessaging = () => {
         .then((res) => {
           const replies = res.data.replies;
           if (replies && replies.length > 0) {
-            // Merge new replies into the existing chats
-            setChats((prevChats) =>
-              prevChats.map((chat) => {
-                const newReplies = replies.filter((r) => r.thread_id === chat.id);
+            setChats((prevChats) => {
+              const updatedChats = prevChats.map((chat) => {
+                const newReplies = replies.filter(
+                  (r) => r.thread_id === chat.id
+                );
                 if (newReplies.length > 0) {
                   return { ...chat, messages: [...chat.messages, ...newReplies] };
                 }
                 return chat;
-              })
-            );
+              });
+              // Hard-coded workaround:
+              // If there's exactly one chat and it currently has only one message,
+              // force a page reload (once) when a new reply is received.
+              if (
+                updatedChats.length === 1 &&
+                updatedChats[0].messages.length === 1 &&
+                !hasForcedReload
+              ) {
+                setHasForcedReload(true);
+                window.location.reload();
+              }
+              return updatedChats;
+            });
             // Update unread threads if needed
             setUnreadThreads((prevUnread) => {
               const newSet = new Set(prevUnread);
@@ -137,7 +155,7 @@ const SecureMessaging = () => {
         .catch((err) => console.error("Error fetching secure replies:", err));
     }, 5000);
     return () => clearInterval(intervalId);
-  }, []); // Run only on mount for constant polling
+  }, [hasForcedReload]);
 
   // Ensure selectedChat is updated when chats change
   useEffect(() => {
@@ -146,12 +164,14 @@ const SecureMessaging = () => {
         setSelectedChat(chats[0]);
       } else {
         const updated = chats.find((t) => t.id === selectedChat.id);
-        if (updated && updated.messages.length !== selectedChat.messages.length) {
+        if (updated) {
           setSelectedChat(updated);
+        } else {
+          setSelectedChat(chats[0]);
         }
       }
     }
-  }, [chats, selectedChat]);
+  }, [chats]);
 
   // Search logic
   useEffect(() => {
@@ -209,13 +229,13 @@ const SecureMessaging = () => {
       sender: "You",
       time: formatDate(new Date()),
     };
-    // Optimistically update the UI
+    // Optimistically update UI
     const updatedChat = { ...selectedChat, messages: [...selectedChat.messages, newMsg] };
     const updatedChats = chats.map((chat) =>
       chat.id === updatedChat.id ? updatedChat : chat
     );
-    setSelectedChat(updatedChat);
     setChats(updatedChats);
+    setSelectedChat(updatedChat);
     setNewMessage("");
 
     axios
@@ -224,8 +244,12 @@ const SecureMessaging = () => {
         { thread_id: selectedChat.id, message: newMsg.text },
         { withCredentials: true }
       )
-      .then((res) => console.log("Message forwarded to secure messaging agent:", res.data))
-      .catch((err) => console.error("Error sending message to secure messaging agent:", err));
+      .then((res) =>
+        console.log("Message forwarded to secure messaging agent:", res.data)
+      )
+      .catch((err) =>
+        console.error("Error sending message to secure messaging agent:", err)
+      );
 
     setShowReplyBox(false);
   };
@@ -235,8 +259,8 @@ const SecureMessaging = () => {
       alert("Please fill in all fields.");
       return;
     }
-    // Create a new chat object locally
-    const newId = chats.length > 0 ? Math.max(...chats.map((chat) => chat.id)) + 1 : 1;
+    const newId =
+      chats.length > 0 ? Math.max(...chats.map((chat) => chat.id)) + 1 : 1;
     const currentTime = formatDate(new Date());
     const newChat = {
       id: newId,
@@ -260,8 +284,12 @@ const SecureMessaging = () => {
         { thread_id: newChat.id, message: newChatMessage, topic: newChatSubject },
         { withCredentials: true }
       )
-      .then((res) => console.log("New chat forwarded to secure messaging agent:", res.data))
-      .catch((err) => console.error("Error forwarding new chat message to secure messaging agent:", err));
+      .then((res) =>
+        console.log("New chat forwarded to secure messaging agent:", res.data)
+      )
+      .catch((err) =>
+        console.error("Error forwarding new chat message to secure messaging agent:", err)
+      );
 
     setNewChatSubject("");
     setNewChatMessage("");
@@ -336,7 +364,6 @@ const SecureMessaging = () => {
             style={{ width: "150px", display: "block", margin: "0 auto" }}
           />
         </div>
-
         <button
           style={{
             width: "100%",
@@ -356,7 +383,6 @@ const SecureMessaging = () => {
         >
           New Message
         </button>
-
         <ul style={{ listStyle: "none", paddingLeft: 0, width: "100%" }}>
           {chats.length === 0 ? (
             <p style={{ color: "#666" }}>No conversations yet.</p>
@@ -397,7 +423,6 @@ const SecureMessaging = () => {
           )}
         </ul>
       </aside>
-
       {/* Right Panel */}
       <div
         style={{
@@ -471,7 +496,6 @@ const SecureMessaging = () => {
               </div>
             )}
           </div>
-
           <div style={{ position: "relative" }}>
             {user && (
               <img
@@ -520,7 +544,6 @@ const SecureMessaging = () => {
             )}
           </div>
         </div>
-
         {/* Conversation Card */}
         <div
           style={{
@@ -554,14 +577,19 @@ const SecureMessaging = () => {
                     {selectedChat.title}
                   </h2>
                 ) : (
-                  <h2 style={{ fontSize: "1.5rem", fontWeight: "bold", margin: 0 }}>
+                  <h2
+                    style={{
+                      fontSize: "1.5rem",
+                      fontWeight: "bold",
+                      margin: 0,
+                    }}
+                  >
                     No Thread Selected
                   </h2>
                 )}
               </div>
             </header>
           )}
-
           {composeMode ? (
             <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
               <div
@@ -615,7 +643,10 @@ const SecureMessaging = () => {
                   }}
                 >
                   <label
-                    style={{ marginBottom: "4px", fontSize: "0.85rem" }}
+                    style={{
+                      marginBottom: "4px",
+                      fontSize: "0.85rem",
+                    }}
                   >
                     Message
                   </label>
@@ -707,7 +738,6 @@ const SecureMessaging = () => {
                       const displayedText = truncated
                         ? truncateText(msg.text, 80)
                         : msg.text;
-
                       return (
                         <div
                           key={key}
@@ -731,9 +761,7 @@ const SecureMessaging = () => {
                         >
                           <img
                             src={
-                              msg.sender === "You"
-                                ? "/avatar.png"
-                                : "/agent.png"
+                              msg.sender === "You" ? "/avatar.png" : "/agent.png"
                             }
                             alt="Avatar"
                             style={{
