@@ -13,6 +13,7 @@ function truncateText(text, maxLength = 80) {
   return singleLine.substring(0, maxLength) + "...";
 }
 
+// const SERVER_URL = "http://localhost:5000";
 const SERVER_URL = "https://jdbeue.pythonanywhere.com";
 
 const SecureMessaging = () => {
@@ -94,7 +95,8 @@ const SecureMessaging = () => {
           }
           return acc;
         }, {});
-        const chatsArray = Object.values(groupedChats).sort((a, b) => a.id - b.id);
+        // const chatsArray = Object.values(groupedChats).sort((a, b) => a.id - b.id);
+        const chatsArray = Object.values(groupedChats).sort((a, b) => new Date(b.time) - new Date(a.time));
         setChats(chatsArray);
         if (chatsArray.length > 0 && !selectedChat) {
           setSelectedChat(chatsArray[0]);
@@ -127,7 +129,8 @@ const SecureMessaging = () => {
                   (r) => r.thread_id === chat.id
                 );
                 if (newReplies.length > 0) {
-                  return { ...chat, messages: [...chat.messages, ...newReplies] };
+                  const latestReplyTime = newReplies[newReplies.length - 1].time;
+                  return { ...chat, messages: [...chat.messages, ...newReplies], time: latestReplyTime  };
                 }
                 return chat;
               });
@@ -142,6 +145,7 @@ const SecureMessaging = () => {
                 setHasForcedReload(true);
                 window.location.reload();
               }
+              updatedChats.sort((a, b) => new Date(b.time) - new Date(a.time));
               return updatedChats;
             });
             // Update unread threads if needed
