@@ -24,8 +24,8 @@ function formatInboxTimestamp(timeString) {
   });
 }
 
-const SERVER_URL = "http://localhost:5000";
-// const SERVER_URL = "https://jdbeue.pythonanywhere.com";
+// const SERVER_URL = "http://localhost:5000";
+const SERVER_URL = "https://jdbeue.pythonanywhere.com";
 
 const SecureMessaging = () => {
   // State variables
