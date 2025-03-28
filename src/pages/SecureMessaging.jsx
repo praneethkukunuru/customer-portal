@@ -248,19 +248,10 @@ const SecureMessaging = () => {
       time: formatDate(new Date()),
     };
     // Optimistically update UI
-    // const updatedChat = { ...selectedChat, messages: [...selectedChat.messages, newMsg] };
-    const updatedChat = {
-      ...selectedChat,
-      messages: [...selectedChat.messages, newMsg],
-      time: formatDate(new Date()), // Update chat's overall time
-    };
-    // const updatedChats = chats.map((chat) =>
-    //   chat.id === updatedChat.id ? updatedChat : chat
-    // );
-    const updatedChats = chats
-    .map(chat => (chat.id === updatedChat.id ? updatedChat : chat))
-    .sort((a, b) => new Date(b.time) - new Date(a.time));
-    
+    const updatedChat = { ...selectedChat, messages: [...selectedChat.messages, newMsg] };
+    const updatedChats = chats.map((chat) =>
+      chat.id === updatedChat.id ? updatedChat : chat
+    );
     setAttachment(null);
     setChats(updatedChats);
     setSelectedChat(updatedChat);
@@ -306,7 +297,6 @@ const SecureMessaging = () => {
       ],
     };
     const updatedChats = [newChat, ...chats];
-    updatedChats.sort((a, b) => new Date(b.time) - new Date(a.time));
     setChats(updatedChats);
     setSelectedChat(newChat);
 
