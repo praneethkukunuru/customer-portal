@@ -13,6 +13,17 @@ function truncateText(text, maxLength = 80) {
   return singleLine.substring(0, maxLength) + "...";
 }
 
+function formatInboxTimestamp(timeString) {
+  const date = new Date(timeString);
+  if (isNaN(date.getTime())) return "";
+  // Format as MM/DD/YYYY HH:MM AM/PM
+  return date.toLocaleDateString("en-US") + " " + date.toLocaleTimeString("en-US", {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 // const SERVER_URL = "http://localhost:5000";
 const SERVER_URL = "https://jdbeue.pythonanywhere.com";
 
@@ -45,6 +56,8 @@ const SecureMessaging = () => {
 
   // New state: track if a forced reload has occurred
   const [hasForcedReload, setHasForcedReload] = useState(false);
+
+  const [attachment, setAttachment] = useState(null);
 
   // ------------------ Effects ------------------
 
@@ -227,9 +240,10 @@ const SecureMessaging = () => {
 
   const sendMessage = () => {
     if (!newMessage.trim() || !selectedChat) return;
+    const updatedMessage = attachment ? newMessage + "\n" + attachment.name : newMessage;
     const newMsg = {
       id: selectedChat.messages.length + 1,
-      text: newMessage,
+      text: updatedMessage,
       sender: "You",
       time: formatDate(new Date()),
     };
@@ -238,6 +252,7 @@ const SecureMessaging = () => {
     const updatedChats = chats.map((chat) =>
       chat.id === updatedChat.id ? updatedChat : chat
     );
+    setAttachment(null);
     setChats(updatedChats);
     setSelectedChat(updatedChat);
     setNewMessage("");
@@ -263,6 +278,8 @@ const SecureMessaging = () => {
       alert("Please fill in all fields.");
       return;
     }
+    const updatedMessage = attachment ? newChatMessage + "\n" + attachment.name : newChatMessage;
+    // newChatMessage = updatedMessage;
     const newId =
       chats.length > 0 ? Math.max(...chats.map((chat) => chat.id)) + 1 : 1;
     const currentTime = formatDate(new Date());
@@ -273,7 +290,8 @@ const SecureMessaging = () => {
       messages: [
         {
           sender: "You",
-          text: newChatMessage,
+          // text: newChatMessage,
+          text: updatedMessage,
           time: currentTime,
         },
       ],
@@ -285,7 +303,7 @@ const SecureMessaging = () => {
     axios
       .post(
         `${SERVER_URL}/send_to_secure`,
-        { thread_id: newChat.id, message: newChatMessage, topic: newChatSubject },
+        { thread_id: newChat.id, message: updatedMessage, topic: newChatSubject },
         { withCredentials: true }
       )
       .then((res) =>
@@ -295,6 +313,7 @@ const SecureMessaging = () => {
         console.error("Error forwarding new chat message to secure messaging agent:", err)
       );
 
+    setAttachment(null);
     setNewChatSubject("");
     setNewChatMessage("");
     setComposeMode(false);
@@ -407,7 +426,7 @@ const SecureMessaging = () => {
               >
                 <p style={{ fontWeight: "bold", margin: 0 }}>{chat.title}</p>
                 <span style={{ fontSize: "0.75rem", color: "#718096" }}>
-                  {chat.time}
+                  {formatInboxTimestamp(chat.time)}
                 </span>
                 {unreadThreads.includes(chat.id) && (
                   <div
@@ -689,7 +708,7 @@ const SecureMessaging = () => {
                   >
                     Send Message
                   </button>
-                  <button
+                  {/* <button
                     style={{
                       backgroundColor: "#3182ce",
                       color: "#fff",
@@ -701,7 +720,48 @@ const SecureMessaging = () => {
                     }}
                   >
                     Attachment
-                  </button>
+                  </button> */}
+                  <input
+                    type="file"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      console.log("Selected file:", file);
+                      setAttachment(file);
+                    }}
+                    style={{ display: "none" }}
+                    id="attachmentInput"
+                  />
+                  <label
+                    htmlFor="attachmentInput"
+                    style={{
+                      backgroundColor: "#3182ce",
+                      color: "#fff",
+                      padding: "8px 16px",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "0.85rem",
+                      display: "inline-block",
+                    }}
+                  >
+                    Attachment
+                  </label>
+                  {attachment && (
+                    <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "8px"}}>
+                      <span style={{ fontSize: "0.85rem", marginRight: "4px" }}>{attachment.name}</span>
+                              <button
+                                onClick={() => setAttachment(null)}
+                                style={{
+                                  border: "none",
+                                  background: "transparent",
+                                  color: "red",
+                                  cursor: "pointer",
+                                  fontSize: "1rem",
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                  )}
                   <button
                     onClick={cancelCompose}
                     style={{
@@ -788,7 +848,7 @@ const SecureMessaging = () => {
                               <span style={{ fontWeight: "bold" }}>
                                 {msg.sender}
                               </span>
-                              <span>{msg.time}</span>
+                              <span>{formatInboxTimestamp(msg.time)}</span>
                             </div>
                             <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>
                               {displayedText}
@@ -880,7 +940,7 @@ const SecureMessaging = () => {
                           >
                             Send
                           </button>
-                          <button
+                          {/* <button
                             onClick={sendMessage}
                             style={{
                               backgroundColor: "#3182ce",
@@ -893,7 +953,48 @@ const SecureMessaging = () => {
                             }}
                           >
                             Attachment
-                          </button>
+                          </button> */}
+                          <input
+                              type="file"
+                              onChange={(e) => {
+                                const file = e.target.files[0];
+                                console.log("Selected file:", file);
+                                setAttachment(file);
+                              }}
+                              style={{ display: "none" }}
+                              id="attachmentInput"
+                            />
+                            <label
+                              htmlFor="attachmentInput"
+                              style={{
+                                backgroundColor: "#3182ce",
+                                color: "#fff",
+                                padding: "8px 16px",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                fontSize: "0.85rem",
+                                display: "inline-block",
+                              }}
+                            >
+                              Attachment
+                            </label>
+                            {attachment && (
+                              <div style={{ display: "inline-flex", alignItems: "center", marginLeft: "8px"}}>
+                                <span style={{ fontSize: "0.85rem", marginRight: "4px" }}>{attachment.name}</span>
+                                        <button
+                                          onClick={() => setAttachment(null)}
+                                          style={{
+                                            border: "none",
+                                            background: "transparent",
+                                            color: "red",
+                                            cursor: "pointer",
+                                            fontSize: "1rem",
+                                          }}
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                            )}
                           <button
                             onClick={() => {
                               setShowReplyBox(false);
